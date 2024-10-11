@@ -1,0 +1,203 @@
+---
+title: "HW 3"
+author: "Tara Hinton"
+date: "9/24/2024"
+output:
+  pdf_document: default
+  html_document:
+    number_sections: true
+---
+
+#
+
+Let $E[X] = \mu$.  Show that $Var[X] := E[(X-E[X])^2] = E[X^2]-(E[X])^2$.  Note, all you have to do is show the second equality (the first is our definition from class).
+
+E[(X-E[X])^2] = E[(X - E[X])(X - E[X])] = E[X^2 −2XE[X]+(E[X])^2] = 
+E[X^2] - 2E[X]E[X] + E[(E[X])^2] = E[X]^2−2(E[X])^2+(E[X])^2
+
+
+
+# 
+
+In the computational section of this homework, we will discuss support vector machines and tree-based methods.  I will begin by simulating some data for you to use with SVM. 
+
+```{r}
+library(e1071)
+set.seed(1) 
+x=matrix(rnorm(200*2),ncol=2)
+x[1:100,]=x[1:100,]+2
+x[101:150,]=x[101:150,]-2
+y=c(rep(1,150),rep(2,50))
+dat=data.frame(x=x,y=as.factor(y))
+plot(x, col=y)
+
+```
+
+
+##
+
+Quite clearly, the above data is not linearly separable.  Create a training-testing partition with 100 random observations in the training partition.  Fit an svm on this training data using the radial kernel, and tuning parameters $\gamma=1$, cost $=1$.  *Plot the svm on the training data.*  
+
+```{r}
+set.seed(1)
+train <- sample(200,100)
+svmfit = svm(y ~ ., data = dat[train,], kernel = "radial", gamma = 1, cost = 1)
+#plotting on the training data
+plot(svmfit, dat[train,])
+
+```
+
+##
+
+Notice that the above decision boundary is decidedly non-linear.  It seems to perform reasonably well, but there are indeed some misclassifications.  Let's see if increasing the cost ^[Remember this is a parameter that decides how smooth your decision boundary should be] helps our classification error rate.  Refit the svm with the radial kernel, $\gamma=1$, and a cost of 10000.  *Plot this svm on the training data.* 
+
+```{r}
+svmfit = svm(y ~ ., data = dat[train,], kernel = "radial", gamma = 1, cost = 10000)
+plot(svmfit, dat[train,])
+```
+
+##
+
+It would appear that we are better capturing the training data, but comment on the dangers (if any exist), of such a model. 
+
+With a higher cost argument, we are choosing to penalize samples inside the margins to a higher extent. This increases the complexity and computational heftiness of our model, because SVM will look for higher planes in order to minimize the points within the margin. Our decision boundary may be amorphous and not generalizable, with a very small and specific margin. 
+
+##
+
+Create a confusion matrix by using this svm to predict on the current testing partition.  Comment on the confusion matrix.  Is there any disparity in our classification results?    
+Our svm predicted correctly on 86 out of 100 points. 14 were predicted incorrectly on the current testing partition, with 12 of those predicted to be 2 when they were actually 1. This is a discrepancy (overprediction) of 2's, while only two 2's were predicted to be 1's. 
+```{r}
+#remove eval = FALSE in above
+table(true=dat[-train,"y"], pred=predict(svmfit, newdata=dat[-train,]))
+```
+
+
+##
+
+Is this disparity because of imbalance in the training/testing partition?  Find the proportion of class `2` in your training partition and see if it is broadly representative of the underlying 25\% of class 2 in the data as a whole. 
+
+
+```{r}
+sum(dat[train,3]==2)/100
+
+```
+
+This 29% of class 2 in the data is quite close to the 25% of class 2 reflected in the data as a whole. This indicates that the disparity between testing/training proportions of class 2 are not the sole reason for bias in the model.
+
+##
+
+Let's try and balance the above to solutions via cross-validation.  Using the `tune` function, pass in the training data, and a list of the following cost and $\gamma$ values: {0.1, 1, 10, 100, 1000} and {0.5, 1,2,3,4}.  Save the output of this function in a variable called `tune.out`.  
+
+```{r}
+
+set.seed(1)
+tune.out = tune(svm, y~., data = dat[train,], kernel = "radial", ranges = list(cost = c(0.1, 1, 10, 100, 1000), gamma = c(0.5, 1,2,3,4)))
+summary(tune.out)
+
+```
+
+I will take `tune.out` and use the best model according to error rate to test on our data.  I will report a confusion matrix corresponding to the 100 predictions.  
+
+
+```{r}
+table(true=dat[-train,"y"], pred=predict(tune.out$best.model, newdata=dat[-train,]))
+```
+
+##
+
+Comment on the confusion matrix.  How have we improved upon the model in question 2 and what qualifications are still necessary for this improved model.  
+
+This time, 92 out of 100 points are correctly predicted. Seven 1's were incorrectly predicted to be 2's, and only one 2 was incorrectly predicted as a 1. This is certainly an improvement from the model in question 2, which missclassified twelve 1's as 2's. SVM is also an inherently linear method, so we encounter issues with overfitting and generalization to future data when our kernels take place in higher dimensions. So, we might want to explore kernels in lower dimensions prior to announcing that radial is the best. 
+
+# 
+Let's turn now to decision trees.  
+
+```{r}
+library(kmed)
+data(heart)
+library(tree)
+
+```
+
+## 
+
+The response variable is currently a categorical variable with four levels.  Convert heart disease into binary categorical variable.  Then, ensure that it is properly stored as a factor. 
+
+```{r}
+head(heart)
+HD = ifelse(heart$class<=0, "0", "1")
+HDfac = as.factor(HD)
+heart_dat = data.frame(heart, HDfac)
+#checking to make sure that HD is in fact a factor
+str(heart_dat)
+
+
+```
+
+## 
+
+Train a classification tree on a 240 observation training subset (using the seed I have set for you).  Plot the tree.  
+
+```{r}
+library(tree)
+#partition the data
+train=sample(1:nrow(heart_dat), 240)
+
+#Plotting the data using tree func
+tree.heart = tree(HDfac~.-class, heart_dat, subset=train)
+plot(tree.heart)
+text(tree.heart, pretty=0)
+
+```
+
+
+## 
+
+Use the trained model to classify the remaining testing points.  Create a confusion matrix to evaluate performance.  Report the classification error rate. 
+
+Our classification error rate is about 15.79%.
+
+```{r}
+#classify testing points 
+heart.pred = predict(tree.heart, heart_dat[-train,], type="class")
+with(heart_dat[-train,], table(heart.pred, HDfac))
+#classification error rate
+1 - (25+23)/57
+```
+
+##  
+
+Above we have a fully grown (bushy) tree.  Now, cross validate it using the `cv.tree` command.  Specify cross validation to be done according to the misclassification rate.  Choose an ideal number of splits, and plot this tree.  Finally, use this pruned tree to test on the testing set.  Report a confusion matrix and the misclassification rate.  
+
+Our misclassification rate now is about 35.10%. 
+
+```{r}
+set.seed(101)
+cv.hearts = cv.tree(tree.heart, FUN = prune.misclass)
+cv.hearts
+
+plot(cv.hearts$size, cv.hearts$dev, type = "b")
+
+prune.hearts = prune.misclass(tree.heart, best = 13)
+plot(prune.hearts)
+text(prune.hearts, pretty=0)
+
+tree.pred = predict(prune.hearts, heart_dat[-train,], type="class")
+with(heart_dat[-train,], table(tree.pred, HDfac))
+
+1- (26+11)/57
+
+```
+
+
+##
+
+Discuss the trade-off in accuracy and interpretability in pruning the above tree. 
+
+We sacrifice accuracy for interpretability when pruning decision trees.s Our full tree has only a 15.79% classification error rate, while our pruned tree has a 35.10% classification error rate. So, we sacrifice some accuracy here -- but the tree is both more generalizable and more interpretabile, with significantly less branches than the full decision tree. 
+
+## 
+
+Discuss the ways a decision tree could manifest algorithmic bias.  
+
+Decision trees are vulnerable to algorithmic bias when 1.) There is a non-representative split between the training and the testing data. For example, if the diversity of our training set is lower than the diversity of our testing set, the classification tree will likely perform poorly (missclassify more) of the testing observations; 2.) A decision tree is not properly pruned and is overfit to the data, our classification tree will not generalize well. For example, if we require perfect purity of our nodes, we are sacrificing the specificity of the model for its predictive accuracy on another set of data.
